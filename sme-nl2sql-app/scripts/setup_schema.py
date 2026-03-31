@@ -1,17 +1,13 @@
 """
-One-off setup script: create schema objects and configure AlloyDB AI NL.
+One-off setup script: create schema objects and load CSV data into AlloyDB.
 
-Run this once from Cloud Shell (or locally via the AlloyDB Auth Proxy)
-AFTER setting the required environment variables and AFTER deploying the
-sql/init.sql schema DDL:
+Run this once from Cloud Shell (or locally via the AlloyDB Auth Proxy):
 
     python scripts/setup_schema.py --csv /path/to/financial_dataset_SME.csv
 
 Flags:
-    --csv PATH      Path to the SME CSV file to load.
-    --skip-load     Skip CSV loading (schema + NL setup only).
-    --skip-nl       Skip AlloyDB AI NL setup (schema + load only).
-    --refresh-only  Only refresh the value index (run after re-loading data).
+    --csv PATH    Path to the SME CSV file to load.
+    --skip-load  Skip CSV loading (DDL only).
 """
 
 import argparse
@@ -26,15 +22,6 @@ import pandas as pd
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.db import get_pool, run_sql
-from app.nl_setup import (
-    add_domain_context,
-    add_templates,
-    apply_schema_context,
-    create_nl_config,
-    create_value_index,
-    enable_extension,
-    refresh_value_index,
-)
 
 # ---------------------------------------------------------------------------
 # Schema DDL  (mirrors sql/init.sql – executed programmatically so the
@@ -148,35 +135,11 @@ def setup_schema() -> None:
     print("[schema] Done.")
 
 
-def setup_nl() -> None:
-    print("[nl] Enabling extensions …")
-    enable_extension()
-    print("[nl] Creating NL config …")
-    create_nl_config()
-    print("[nl] Adding domain context …")
-    add_domain_context()
-    print("[nl] Applying schema context …")
-    apply_schema_context()
-    print("[nl] Adding query templates …")
-    add_templates()
-    print("[nl] Creating value index …")
-    create_value_index()
-    print("[nl] Done.")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="AlloyDB SME demo setup")
     parser.add_argument("--csv", metavar="PATH", help="Path to SME CSV file")
     parser.add_argument("--skip-load", action="store_true")
-    parser.add_argument("--skip-nl", action="store_true")
-    parser.add_argument("--refresh-only", action="store_true")
     args = parser.parse_args()
-
-    if args.refresh_only:
-        print("[nl] Refreshing value index …")
-        refresh_value_index()
-        print("[nl] Done.")
-        return
 
     setup_schema()
 
@@ -184,12 +147,6 @@ def main() -> None:
         if not args.csv:
             parser.error("--csv is required unless --skip-load is set.")
         load_csv(args.csv)
-
-    if not args.skip_nl:
-        setup_nl()
-        if not args.skip_load:
-            print("[nl] Refreshing value index after data load …")
-            refresh_value_index()
 
     print("\nSetup complete.")
 
