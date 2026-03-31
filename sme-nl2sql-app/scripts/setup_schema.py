@@ -106,8 +106,12 @@ def _normalize_col(name: str) -> str:
 
 
 INT_COLS = [
-    "sme_age", "sme_type", "industry_sector", "sme_size_category",
-    "uses_digital_finance", "financial_distress",
+    "sme_age",
+    "sme_type",
+    "industry_sector",
+    "sme_size_category",
+    "uses_digital_finance",
+    "financial_distress",
 ]
 
 
@@ -145,12 +149,18 @@ def setup_schema() -> None:
 
 
 def setup_nl() -> None:
-    print("[nl] Enabling extensions …"); enable_extension()
-    print("[nl] Creating NL config …"); create_nl_config()
-    print("[nl] Adding domain context …"); add_domain_context()
-    print("[nl] Applying schema context …"); apply_schema_context()
-    print("[nl] Adding query templates …"); add_templates()
-    print("[nl] Creating value index …"); create_value_index()
+    print("[nl] Enabling extensions …")
+    enable_extension()
+    print("[nl] Creating NL config …")
+    create_nl_config()
+    print("[nl] Adding domain context …")
+    add_domain_context()
+    print("[nl] Applying schema context …")
+    apply_schema_context()
+    print("[nl] Adding query templates …")
+    add_templates()
+    print("[nl] Creating value index …")
+    create_value_index()
     print("[nl] Done.")
 
 

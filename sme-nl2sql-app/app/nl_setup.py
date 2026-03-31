@@ -9,7 +9,9 @@ from app.db import run_sql
 
 
 def enable_extension() -> None:
-    run_sql("CREATE EXTENSION IF NOT EXISTS google_ml_integration CASCADE;", fetch=False)
+    run_sql(
+        "CREATE EXTENSION IF NOT EXISTS google_ml_integration CASCADE;", fetch=False
+    )
     run_sql("CREATE EXTENSION IF NOT EXISTS alloydb_ai_nl CASCADE;", fetch=False)
 
 
@@ -53,7 +55,7 @@ def add_domain_context(config_id: str = "sme_finance_cfg") -> None:
                 general_context_in => %(ctx)s
             );
             """,
-            params={"cid": config_id, "ctx": f'{{{ctx}}}'},
+            params={"cid": config_id, "ctx": f"{{{ctx}}}"},
             fetch=False,
         )
 
