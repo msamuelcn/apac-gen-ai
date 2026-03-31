@@ -134,7 +134,9 @@ def check_connection() -> None:
     db = os.getenv("ALLOYDB_DB")
     user = os.getenv("ALLOYDB_USER")
     sslmode = os.getenv("ALLOYDB_SSLMODE")
-    print(f"[check] Connecting to {host}:{port} db={db} user={user} sslmode={sslmode} ...")
+    print(
+        f"[check] Connecting to {host}:{port} db={db} user={user} sslmode={sslmode} ..."
+    )
     rows = run_sql("SELECT version() AS v;")
     print("[check] Connection successful.")
     print(f"[check] Database Version: {rows[0]['v']}")
