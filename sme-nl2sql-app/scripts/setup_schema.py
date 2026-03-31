@@ -6,8 +6,9 @@ Run this once from Cloud Shell (or locally via the AlloyDB Auth Proxy):
     python scripts/setup_schema.py --csv /path/to/financial_dataset_SME.csv
 
 Flags:
-    --csv PATH    Path to the SME CSV file to load.
-    --skip-load  Skip CSV loading (DDL only).
+    --csv PATH     Path to the SME CSV file to load.
+    --skip-load    Skip CSV loading (DDL only).
+    --check-only   Validate env + DB connection, then exit.
 """
 
 import argparse
@@ -22,6 +23,15 @@ import pandas as pd
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.db import get_pool, run_sql
+
+_REQUIRED_ENV = [
+    "ALLOYDB_HOST",
+    "ALLOYDB_PORT",
+    "ALLOYDB_DB",
+    "ALLOYDB_USER",
+    "ALLOYDB_PASSWORD",
+    "ALLOYDB_SSLMODE",
+]
 
 # ---------------------------------------------------------------------------
 # Schema DDL  (mirrors sql/init.sql – executed programmatically so the
@@ -102,12 +112,41 @@ INT_COLS = [
 ]
 
 
+def validate_env() -> None:
+    missing = [key for key in _REQUIRED_ENV if not os.getenv(key)]
+    if not missing:
+        return
+
+    print("Error: Missing required environment variables:")
+    for key in missing:
+        print(f"  - {key}")
+    print(
+        "\nSet them first (or source your .env) and retry.\n"
+        "Required: ALLOYDB_HOST, ALLOYDB_PORT, ALLOYDB_DB, "
+        "ALLOYDB_USER, ALLOYDB_PASSWORD, ALLOYDB_SSLMODE"
+    )
+    sys.exit(1)
+
+
+def check_connection() -> None:
+    host = os.getenv("ALLOYDB_HOST")
+    port = os.getenv("ALLOYDB_PORT")
+    db = os.getenv("ALLOYDB_DB")
+    user = os.getenv("ALLOYDB_USER")
+    sslmode = os.getenv("ALLOYDB_SSLMODE")
+    print(f"[check] Connecting to {host}:{port} db={db} user={user} sslmode={sslmode} ...")
+    rows = run_sql("SELECT version() AS v;")
+    print("[check] Connection successful.")
+    print(f"[check] Database Version: {rows[0]['v']}")
+
+
 def load_csv(csv_path: str) -> None:
-    print(f"[load] Reading {csv_path} …")
+    print(f"[load] Reading {csv_path} ...")
     df_raw = pd.read_csv(csv_path)
     df = df_raw.rename(columns={c: _normalize_col(c) for c in df_raw.columns})
     for col in INT_COLS:
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
 
     # Exclude the generated column from the COPY target list.
     cols = [c for c in df.columns if c != "distress_label"]
@@ -130,7 +169,7 @@ def load_csv(csv_path: str) -> None:
 
 
 def setup_schema() -> None:
-    print("[schema] Applying DDL …")
+    print("[schema] Applying DDL ...")
     run_sql(_DDL, fetch=False)
     print("[schema] Done.")
 
@@ -139,16 +178,34 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="AlloyDB SME demo setup")
     parser.add_argument("--csv", metavar="PATH", help="Path to SME CSV file")
     parser.add_argument("--skip-load", action="store_true")
+    parser.add_argument("--check-only", action="store_true")
     args = parser.parse_args()
 
-    setup_schema()
+    try:
+        validate_env()
+        check_connection()
 
-    if not args.skip_load:
-        if not args.csv:
-            parser.error("--csv is required unless --skip-load is set.")
-        load_csv(args.csv)
+        if args.check_only:
+            print("\nCheck complete. Exiting due to --check-only.")
+            return
 
-    print("\nSetup complete.")
+        setup_schema()
+
+        if not args.skip_load:
+            if not args.csv:
+                parser.error("--csv is required unless --skip-load is set.")
+            load_csv(args.csv)
+
+        print("\nSetup complete.")
+    except Exception as exc:
+        if "couldn't get a connection" in str(exc).lower():
+            print(
+                "Connection timeout: could not get a DB connection in 30s.\n"
+                "Check host/port reachability, AlloyDB Auth Proxy usage, and credentials."
+            )
+            sys.exit(1)
+        print(f"Unexpected error: {exc}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
