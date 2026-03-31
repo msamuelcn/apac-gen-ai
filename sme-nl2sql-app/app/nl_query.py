@@ -1,4 +1,8 @@
-"""Natural-language to SQL via Vertex AI Gemini, executed against AlloyDB."""
+"""Natural-language to SQL via Vertex AI Gemini, executed against AlloyDB.
+
+Cache layer: similar past questions are resolved in-database using
+pgvector + AlloyDB google_ml_integration embedding() instead of calling Gemini.
+"""
 
 import os
 
@@ -6,6 +10,9 @@ import vertexai
 from vertexai.generative_models import GenerativeModel
 
 from app.db import run_sql
+
+_SIMILARITY_THRESHOLD = float(os.environ.get("CACHE_SIMILARITY_THRESHOLD", "0.88"))
+_EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-005")
 
 _SCHEMA_CONTEXT = """
 Table: sme_risk.sme_financial
@@ -48,6 +55,46 @@ Question: {question}
 """
 
 
+def _cache_lookup(question: str) -> str | None:
+    """Return cached SQL if a semantically similar question already exists."""
+    rows = run_sql(
+        """
+        SELECT generated_sql,
+               1 - (question_embedding <=> embedding(%(model)s, %(q)s)::vector)
+                   AS similarity
+        FROM   sme_risk.query_cache
+        WHERE  question_embedding IS NOT NULL
+        ORDER  BY question_embedding <=> embedding(%(model)s, %(q)s)::vector
+        LIMIT  1
+        """,
+        params={"model": _EMBEDDING_MODEL, "q": question},
+    )
+    if rows and rows[0]["similarity"] >= _SIMILARITY_THRESHOLD:
+        run_sql(
+            """
+            UPDATE sme_risk.query_cache
+            SET    hit_count = hit_count + 1
+            WHERE  generated_sql = %(sql)s
+            """,
+            params={"sql": rows[0]["generated_sql"]},
+            fetch=False,
+        )
+        return rows[0]["generated_sql"]
+    return None
+
+
+def _cache_store(question: str, sql: str) -> None:
+    """Persist a new question/SQL pair with its pgvector embedding."""
+    run_sql(
+        """
+        INSERT INTO sme_risk.query_cache (question, question_embedding, generated_sql)
+        VALUES (%(q)s, embedding(%(model)s, %(q)s)::vector, %(sql)s)
+        """,
+        params={"model": _EMBEDDING_MODEL, "q": question, "sql": sql},
+        fetch=False,
+    )
+
+
 def _get_model() -> GenerativeModel:
     vertexai.init(
         project=os.environ["GCP_PROJECT"],
@@ -68,9 +115,18 @@ def generate_sql(question: str) -> str:
 
 def ask(question: str) -> dict:
     """
-    Convert *question* to SQL via Gemini, execute it on AlloyDB, and return:
-        { "question": str, "generated_sql": str, "results": list[dict] }
+    Convert *question* to SQL and execute it.  Checks the semantic cache first;
+    only calls Gemini on a cache miss.  Returns:
+        { "question": str, "generated_sql": str, "results": list[dict], "cached": bool }
     """
+    cached_sql = _cache_lookup(question)
+    if cached_sql:
+        results = run_sql(cached_sql) or []
+        return {"question": question, "generated_sql": cached_sql,
+                "results": results, "cached": True}
+
     sql = generate_sql(question)
+    _cache_store(question, sql)
     results = run_sql(sql) or []
-    return {"question": question, "generated_sql": sql, "results": results}
+    return {"question": question, "generated_sql": sql,
+            "results": results, "cached": False}

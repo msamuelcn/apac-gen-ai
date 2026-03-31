@@ -79,5 +79,43 @@ SELECT
 FROM sme_risk.sme_financial
 GROUP BY industry_sector, sme_size_category, annual_revenue_category;
 
+-- ---------------------------------------------------------------------------
+-- 5. ML extensions  (AlloyDB google_ml_integration + pgvector)
+-- ---------------------------------------------------------------------------
+CREATE EXTENSION IF NOT EXISTS google_ml_integration CASCADE;
+CREATE EXTENSION IF NOT EXISTS vector;
+
+GRANT EXECUTE ON FUNCTION embedding TO postgres;
+
+-- Register the text-embedding model once (fill in YOUR_PROJECT_ID):
+CALL google_ml.create_model(
+   model_id => 'gemini-3-flash-preview',
+   model_request_url => 'https://aiplatform.googleapis.com/v1/projects/<<YOUR_PROJECT_ID>>/locations/global/publishers/google/models/gemini-3-flash-preview:generateContent',
+   model_qualified_name => 'gemini-3-flash-preview',
+   model_provider => 'google',
+   model_type => 'llm',
+   model_auth_type => 'alloydb_service_agent_iam'
+);
+--replace <<YOUR_PROJECT_ID>> with your project id.
+
+-- ---------------------------------------------------------------------------
+-- 6. Semantic query cache
+--    Stores past NL questions with their pgvector embedding so future
+--    similar questions can be served from cache instead of Gemini.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sme_risk.query_cache (
+    id                 bigserial    PRIMARY KEY,
+    question           text         NOT NULL,
+    question_embedding vector(768),
+    generated_sql      text         NOT NULL,
+    hit_count          int          DEFAULT 1,
+    created_at         timestamptz  DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_cache_embedding
+    ON sme_risk.query_cache
+    USING ivfflat (question_embedding vector_cosine_ops)
+    WITH (lists = 10);
+
 -- Done.
 -- Next step: load data via:  python scripts/setup_schema.py --csv /path/to/file.csv
