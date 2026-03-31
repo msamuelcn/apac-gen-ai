@@ -122,11 +122,19 @@ def ask(question: str) -> dict:
     cached_sql = _cache_lookup(question)
     if cached_sql:
         results = run_sql(cached_sql) or []
-        return {"question": question, "generated_sql": cached_sql,
-                "results": results, "cached": True}
+        return {
+            "question": question,
+            "generated_sql": cached_sql,
+            "results": results,
+            "cached": True,
+        }
 
     sql = generate_sql(question)
     _cache_store(question, sql)
     results = run_sql(sql) or []
-    return {"question": question, "generated_sql": sql,
-            "results": results, "cached": False}
+    return {
+        "question": question,
+        "generated_sql": sql,
+        "results": results,
+        "cached": False,
+    }
