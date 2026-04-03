@@ -7,11 +7,12 @@ Entry point for Gunicorn / Cloud Run:
 
 import os
 from flask import Flask
-from app.routes import bp
+from app.routes import bp, ui
 
 
 def create_app() -> Flask:
     application = Flask(__name__)
+    application.register_blueprint(ui)
     application.register_blueprint(bp)
     return application
 

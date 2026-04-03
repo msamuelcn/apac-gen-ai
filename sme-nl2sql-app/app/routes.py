@@ -1,10 +1,17 @@
 """Flask blueprints – all HTTP endpoints live here."""
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, render_template, request
 from app.nl_query import ask
 from app.db import run_sql
 
+ui = Blueprint("ui", __name__)
 bp = Blueprint("api", __name__, url_prefix="/api")
+
+
+@ui.get("/")
+def index():
+    """Serve the single-page analytics dashboard."""
+    return render_template("index.html")
 
 
 @bp.get("/health")
